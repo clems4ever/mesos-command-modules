@@ -1,8 +1,6 @@
 #include "CommandRunner.hpp"
 
-#include <chrono>
 #include <errno.h>
-#include <functional>
 #include <signal.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -10,7 +8,9 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <chrono>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <sstream>
@@ -134,7 +134,7 @@ pid_t popen2(const std::string& command, const std::vector<std::string>& args,
     dup2(p_stdout[WRITE], WRITE);
     execv(command.c_str(), &nullTerminatedArgs[0]);
 
-    //TODO: properly close relevant fd here
+    // TODO: properly close relevant fd here
 
     // This code will only be reached if execl fails according to the
     // documentation: https://linux.die.net/man/3/execl
@@ -160,11 +160,9 @@ pid_t popen2(const std::string& command, const std::vector<std::string>& args,
 }
 
 class Timer {
-public:
-  Timer(
-    const milliseconds tickPeriod,
-    const milliseconds timeoutPeriod)
-    : m_tickPeriod(tickPeriod), m_timeoutPeriod(timeoutPeriod) {}
+ public:
+  Timer(const milliseconds tickPeriod, const milliseconds timeoutPeriod)
+      : m_tickPeriod(tickPeriod), m_timeoutPeriod(timeoutPeriod) {}
 
   void run(std::function<bool(void)> onTimeoutCallback) {
     auto start = std::chrono::steady_clock::now();
@@ -173,7 +171,7 @@ public:
     bool finished = false;
     m_hasTimedOut = false;
 
-    while(!finished && current < timeout) {
+    while (!finished && current < timeout) {
       std::this_thread::sleep_for(m_tickPeriod);
       finished = onTimeoutCallback();
       current = std::chrono::steady_clock::now();
@@ -186,7 +184,7 @@ public:
 
   bool hasTimedOut() const { return m_hasTimedOut; }
 
-private:
+ private:
   const milliseconds m_tickPeriod;
   const milliseconds m_timeoutPeriod;
   bool m_hasTimedOut;
@@ -221,11 +219,13 @@ Try<Nothing> runCommandWithTimeout(const std::string& command,
 
   pid_t pid = popen2(command, args);
 
-  auto waitProcess = [pid, &status, loggingMetadata, command, &forceKillRequired, &exitCode, &signalCode]() {
+  auto waitProcess = [pid, &status, loggingMetadata, command,
+                      &forceKillRequired, &exitCode, &signalCode]() {
     int rc = waitpid(pid, &status, WNOHANG);
     if (rc < 0) {
-      TASK_LOG(ERROR, loggingMetadata) << "Error when waiting for child process running the "
-        << "external command: " << strerror(errno);
+      TASK_LOG(ERROR, loggingMetadata)
+          << "Error when waiting for child process running the "
+          << "external command: " << strerror(errno);
       forceKillRequired = true;
       return true;
     }
@@ -233,13 +233,15 @@ Try<Nothing> runCommandWithTimeout(const std::string& command,
     if (rc > 0 && (WIFEXITED(status) || WIFSIGNALED(status))) {
       if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
         exitCode = WEXITSTATUS(status);
-        TASK_LOG(ERROR, loggingMetadata) << "Failed to successfully run the command \"" << command
-                                         << "\", it failed with status "+ std::to_string(exitCode);
+        TASK_LOG(ERROR, loggingMetadata)
+            << "Failed to successfully run the command \"" << command
+            << "\", it failed with status " + std::to_string(exitCode);
       }
       if (WIFSIGNALED(status) && WTERMSIG(status) != 0) {
         signalCode = WTERMSIG(status);
-        TASK_LOG(ERROR, loggingMetadata) << "Failed to successfully run the command \"" << command
-                                         << "\", it exited with signal "+ std::to_string(signalCode);
+        TASK_LOG(ERROR, loggingMetadata)
+            << "Failed to successfully run the command \"" << command
+            << "\", it exited with signal " + std::to_string(signalCode);
       }
       return true;
     }
@@ -251,10 +253,12 @@ Try<Nothing> runCommandWithTimeout(const std::string& command,
   t1.run(waitProcess);
 
   if (t1.hasTimedOut() && !forceKillRequired) {
-    TASK_LOG(WARNING, loggingMetadata) << "External command took too long to exit. "
-      << "Sending SIGTERM...";
+    TASK_LOG(WARNING, loggingMetadata)
+        << "External command took too long to exit. "
+        << "Sending SIGTERM...";
     if (kill(pid, SIGTERM) == -1) {
-      TASK_LOG(ERROR, loggingMetadata) << "Failed to send SIGTERM: " << strerror(errno);
+      TASK_LOG(ERROR, loggingMetadata)
+          << "Failed to send SIGTERM: " << strerror(errno);
       forceKillRequired = true;
     } else {
       Timer t(tickPeriod, milliseconds(1000));
@@ -266,27 +270,31 @@ Try<Nothing> runCommandWithTimeout(const std::string& command,
   }
 
   if (forceKillRequired) {
-    TASK_LOG(WARNING, loggingMetadata) << "External command is still running. Sending SIGKILL...";
+    TASK_LOG(WARNING, loggingMetadata)
+        << "External command is still running. Sending SIGKILL...";
     if (kill(pid, SIGKILL) == -1) {
-      TASK_LOG(ERROR, loggingMetadata) << "Failed to kill the command: " << strerror(errno);
-      return Error("Command \"" + command + "\" took too long to execute and SIGKILL failed.");
+      TASK_LOG(ERROR, loggingMetadata)
+          << "Failed to kill the command: " << strerror(errno);
+      return Error("Command \"" + command +
+                   "\" took too long to execute and SIGKILL failed.");
     } else {
       return Error("Command \"" + command + "\" took too long to execute.");
     }
   }
 
   if (exitCode > 0) {
-    return Error("Command \"" + command + "\" exited with return code " + std::to_string(exitCode) + ".");
+    return Error("Command \"" + command + "\" exited with return code " +
+                 std::to_string(exitCode) + ".");
   } else if (signalCode > 0) {
-    return Error("Command \"" + command + "\" exited via signal " + std::to_string(signalCode) + ".");
+    return Error("Command \"" + command + "\" exited via signal " +
+                 std::to_string(signalCode) + ".");
   }
   return Nothing();
 }
 
-CommandRunner::CommandRunner(bool debug, const logging::Metadata& loggingMetadata)
-    : m_debug(debug), m_loggingMetadata(loggingMetadata)
-{
-}
+CommandRunner::CommandRunner(bool debug,
+                             const logging::Metadata& loggingMetadata)
+    : m_debug(debug), m_loggingMetadata(loggingMetadata) {}
 
 /*
  * Run a command to which we pass input and return an output. To pass
@@ -303,27 +311,30 @@ CommandRunner::CommandRunner(bool debug, const logging::Metadata& loggingMetadat
  *
  * @return The output of the command read from the output file.
  */
-Try<std::string> CommandRunner::run(
-  const Command& command,
-  const std::string& input) {
-
+Try<std::string> CommandRunner::run(const Command& command,
+                                    const std::string& input) {
   try {
     TemporaryFile inputFile;
     TemporaryFile outputFile;
     inputFile.write(input);
 
     if (m_debug) {
-      TASK_LOG(INFO, m_loggingMetadata) << "Calling command: \"" << command.command() << "\" (" << command.timeout() << "s) "
-                << inputFile.filepath() << " " << outputFile.filepath();
+      TASK_LOG(INFO, m_loggingMetadata)
+          << "Calling command: \"" << command.command() << "\" ("
+          << command.timeout() << "s) " << inputFile.filepath() << " "
+          << outputFile.filepath();
     } else {
-      TASK_LOG(INFO, m_loggingMetadata) << "Calling command: \"" << command.command() << "\" (" << command.timeout() << "s)";
+      TASK_LOG(INFO, m_loggingMetadata)
+          << "Calling command: \"" << command.command() << "\" ("
+          << command.timeout() << "s)";
     }
 
     vector<string> args;
     args.push_back(inputFile.filepath());
     args.push_back(outputFile.filepath());
 
-    Try<Nothing> result = runCommandWithTimeout(command.command(), args, command.timeout(), m_loggingMetadata);
+    Try<Nothing> result = runCommandWithTimeout(
+        command.command(), args, command.timeout(), m_loggingMetadata);
     if (result.isError()) {
       throw std::runtime_error(result.error());
     }
@@ -331,10 +342,11 @@ Try<std::string> CommandRunner::run(
     return outputFile.readAll();
   } catch (const std::runtime_error& e) {
     if (m_debug) {
-      return Error("[DEBUG] " + string(e.what()) + ". Input was \"" + input + "\"");
+      return Error("[DEBUG] " + string(e.what()) + ". Input was \"" + input +
+                   "\"");
     }
     return Error(e.what());
   }
 }
-}
-}
+}  // namespace mesos
+}  // namespace criteo
